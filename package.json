@@ -1,0 +1,54 @@
+{
+  "name": "emacs-find-file",
+  "version": "0.0.1",
+  "displayName": "Emacs Find File",
+  "description": "Emacs-style find-file functionality for VS Code",
+  "publisher": "Alexandr Burtsev",
+  "engines": {
+    "vscode": "^1.107.0"
+  },
+  "categories": [
+    "Other"
+  ],
+  "activationEvents": [
+    "onCommand:emacs-find-file.findFile"
+  ],
+  "main": "./out/extension.js",
+  "contributes": {
+    "commands": [
+      {
+        "command": "emacs-find-file.findFile",
+        "title": "Emacs: Find File"
+      }
+    ],
+    "keybindings": [
+      {
+        "command": "emacs-find-file.findFile",
+        "key": "ctrl+x ctrl+f",
+        "mac": "cmd+x cmd+f",
+        "when": "editorTextFocus"
+      }
+    ]
+  },
+  "scripts": {
+    "vscode:prepublish": "npm run compile",
+    "compile": "tsc -p ./",
+    "watch": "tsc -watch -p ./",
+    "pretest": "npm run compile && npm run lint",
+    "lint": "eslint src",
+    "test": "vscode-test"
+  },
+  "devDependencies": {
+    "@types/mocha": "^10.0.10",
+    "@types/node": "22.x",
+    "@types/vscode": "^1.107.0",
+    "@vscode/test-cli": "^0.0.12",
+    "@vscode/test-electron": "^2.5.2",
+    "eslint": "^9.39.1",
+    "typescript": "^5.9.3",
+    "typescript-eslint": "^8.48.1"
+  },
+  "dependencies": {
+    "fuse.js": "^7.1.0"
+  }
+}
