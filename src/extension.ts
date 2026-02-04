@@ -2,6 +2,19 @@ import * as vscode from "vscode";
 import * as path from "path";
 import * as fs from "fs";
 
+import type * as FuseModule from "fuse.js" with { "resolution-mode": "import" };
+type FuseConstructor = new <T>(
+  list: readonly T[],
+  options?: any
+) => { search: (pattern: string) => Array<{ item: T }> };
+let Fuse: FuseConstructor;
+
+(async () => {
+  // Dynamically import fuse.js to avoid import issues with CommonJS/ESM interop
+  const module = await import("fuse.js");
+  Fuse = (module.default ? module.default : module) as FuseConstructor;
+})();
+
 interface FileHistoryEntry {
   uri: vscode.Uri;
   timestamp: number;
@@ -20,7 +33,7 @@ class EmacsFindFile {
 
   private loadHistory() {
     const historyData = this.context.globalState.get<FileHistoryEntry[]>(
-      "emacsFindFileHistory",
+      "emacsFindFileHistory"
     );
     if (historyData) {
       historyData.forEach((entry) => {
@@ -72,8 +85,25 @@ class EmacsFindFile {
     return vscode.Uri.file(require("os").homedir());
   }
 
+  private shouldIgnore(fileName: string): boolean {
+    const ignorePatterns = [
+      "node_modules",
+      ".git",
+      ".DS_Store",
+      "*.log",
+      "*.tmp",
+    ];
+
+    return ignorePatterns.some((pattern) => {
+      if (pattern.startsWith("*")) {
+        return fileName.endsWith(pattern.substring(1));
+      }
+      return fileName === pattern;
+    });
+  }
+
   private async getDirectoryContents(
-    uri: vscode.Uri,
+    uri: vscode.Uri
   ): Promise<vscode.QuickPickItem[]> {
     const items: vscode.QuickPickItem[] = [];
 
@@ -89,33 +119,31 @@ class EmacsFindFile {
         });
       }
 
-      // Sort: directories first, then files, with recent items at top
+      // Sort by recency first, then alphabetically
       const sortedEntries = entries.sort((a, b) => {
         const [aName, aType] = a;
         const [bName, bType] = b;
 
-        // Directories first
-        if (
-          aType === vscode.FileType.Directory &&
-          bType !== vscode.FileType.Directory
-        ) {
-          return -1;
-        }
-        if (
-          bType === vscode.FileType.Directory &&
-          aType !== vscode.FileType.Directory
-        ) {
+        // Skip ignored files
+        if (this.shouldIgnore(aName)) {
           return 1;
         }
+        if (this.shouldIgnore(bName)) {
+          return -1;
+        }
 
-        // Check history
+        // Check history - sort by recency regardless of type
         const aPath = path.join(uri.fsPath, aName);
         const bPath = path.join(uri.fsPath, bName);
         const aHistory = this.history.get(aPath);
         const bHistory = this.history.get(bPath);
 
-        if (aHistory && !bHistory) return -1;
-        if (bHistory && !aHistory) return 1;
+        if (aHistory && !bHistory) {
+          return -1;
+        }
+        if (bHistory && !aHistory) {
+          return 1;
+        }
         if (aHistory && bHistory) {
           return bHistory.timestamp - aHistory.timestamp;
         }
@@ -126,6 +154,11 @@ class EmacsFindFile {
 
       // Add entries to quick pick
       for (const [name, type] of sortedEntries) {
+        // Skip ignored files
+        if (this.shouldIgnore(name)) {
+          continue;
+        }
+
         const fullPath = path.join(uri.fsPath, name);
         const historyEntry = this.history.get(fullPath);
         const isDirectory = type === vscode.FileType.Directory;
@@ -133,9 +166,6 @@ class EmacsFindFile {
         items.push({
           label: `${isDirectory ? "$(folder)" : "$(file)"} ${name}`,
           description: isDirectory ? "Directory" : "File",
-          detail: historyEntry
-            ? `Last opened: ${new Date(historyEntry.timestamp).toLocaleString()}`
-            : undefined,
           alwaysShow: true,
         });
       }
@@ -179,7 +209,7 @@ class EmacsFindFile {
       const shouldCreate = await vscode.window.showWarningMessage(
         `File "${targetUri.fsPath}" doesn't exist. Create it?`,
         "Create File",
-        "Cancel",
+        "Cancel"
       );
 
       if (shouldCreate === "Create File") {
@@ -211,27 +241,21 @@ class EmacsFindFile {
     // Handle item selection
     this.quickPick.onDidAccept(async () => {
       const selection = this.quickPick?.selectedItems[0];
-      if (!selection) {
-        return;
-      }
-
       const input = this.quickPick?.value.trim();
-      if (input) {
-        // User typed something - handle as path
-        await this.handlePathInput(input);
-        return;
-      }
 
-      // User selected an item from the list
+      // If there's a selection, prioritize it over typed input
+      // Only use typed input if there's no selection or if it contains path separators
+      if (selection && (!input || (!input.includes("/") && !input.includes("\\")))) {
+        // User selected an item from the list (possibly after filtering)
       const label = selection.label;
 
       if (label.startsWith("$(arrow-up) ..")) {
         // Navigate up
         this.currentPath = vscode.Uri.file(
-          path.dirname(this.currentPath!.fsPath),
+          path.dirname(this.currentPath!.fsPath)
         );
         this.quickPick!.items = await this.getDirectoryContents(
-          this.currentPath,
+          this.currentPath
         );
         this.quickPick!.placeholder = `Find file in: ${this.currentPath.fsPath}`;
         return;
@@ -249,7 +273,7 @@ class EmacsFindFile {
           this.currentPath = vscode.Uri.file(fullPath);
           this.updateHistory(this.currentPath, "directory");
           this.quickPick!.items = await this.getDirectoryContents(
-            this.currentPath,
+            this.currentPath
           );
           this.quickPick!.placeholder = `Find file in: ${this.currentPath.fsPath}`;
           this.quickPick!.value = "";
@@ -261,25 +285,55 @@ class EmacsFindFile {
         }
       } catch (error) {
         vscode.window.showErrorMessage(`Error accessing: ${fullPath}`);
+        }
+      } else if (input) {
+        // No selection but user typed something - handle as path
+        await this.handlePathInput(input);
       }
     });
 
     // Handle value changes (typing)
     this.quickPick.onDidChangeValue(async (value) => {
       if (value.includes("/") || value.includes("\\")) {
-        // User is typing a path - we'll handle on accept
-        this.quickPick!.items = [];
-      } else if (value === "") {
-        // Show directory contents when input is cleared
-        this.quickPick!.items = await this.getDirectoryContents(
-          this.currentPath!,
-        );
+        return;
+      }
+
+      const allItems = await this.getDirectoryContents(this.currentPath!);
+
+      if (value) {
+        const fuse = new Fuse(allItems, {
+          keys: ["label", "description"],
+          threshold: 0.4,
+        });
+        this.quickPick!.items = fuse.search(value).map((result) => result.item);
       } else {
-        // Filter current directory contents
-        const allItems = await this.getDirectoryContents(this.currentPath!);
-        this.quickPick!.items = allItems.filter((item) =>
-          item.label.toLowerCase().includes(value.toLowerCase()),
+        this.quickPick!.items = allItems;
+      }
+    });
+
+    // Add preview in onDidChangeSelection
+    this.quickPick.onDidChangeSelection(async (selection) => {
+      if (selection[0] && !selection[0].label.includes("$(arrow-up)")) {
+        const fileName = selection[0].label.substring(
+          selection[0].label.indexOf(" ") + 1
         );
+        const fullPath = path.join(this.currentPath!.fsPath, fileName);
+
+        try {
+          const stat = await vscode.workspace.fs.stat(
+            vscode.Uri.file(fullPath)
+          );
+          if (stat.type === vscode.FileType.File) {
+            // Preview file content
+            const content = await vscode.workspace.fs.readFile(
+              vscode.Uri.file(fullPath)
+            );
+            const preview = content.toString().substring(0, 200);
+            selection[0].detail = `Preview: ${preview}...`;
+          }
+        } catch (error) {
+          // File doesn't exist yet
+        }
       }
     });
 
@@ -300,7 +354,7 @@ export function activate(context: vscode.ExtensionContext) {
     "emacs-find-file.findFile",
     () => {
       emacsFindFile.showQuickPick();
-    },
+    }
   );
 
   context.subscriptions.push(disposable);

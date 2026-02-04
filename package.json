@@ -3,15 +3,15 @@
   "version": "0.0.1",
   "displayName": "Emacs Find File",
   "description": "Emacs-style find-file functionality for VS Code",
-  "publisher": "Alexandr Burtsev",
+  "publisher": "alexandr-burtsev",
   "engines": {
-    "vscode": "^1.107.0"
+    "vscode": "^1.105.0"
   },
   "categories": [
     "Other"
   ],
   "activationEvents": [
-    "onCommand:emacs-find-file.findFile"
+    "*"
   ],
   "main": "./out/extension.js",
   "contributes": {
@@ -19,14 +19,6 @@
       {
         "command": "emacs-find-file.findFile",
         "title": "Emacs: Find File"
-      }
-    ],
-    "keybindings": [
-      {
-        "command": "emacs-find-file.findFile",
-        "key": "ctrl+x ctrl+f",
-        "mac": "cmd+x cmd+f",
-        "when": "editorTextFocus"
       }
     ]
   },
@@ -41,7 +33,7 @@
   "devDependencies": {
     "@types/mocha": "^10.0.10",
     "@types/node": "22.x",
-    "@types/vscode": "^1.107.0",
+    "@types/vscode": "^1.105.0",
     "@vscode/test-cli": "^0.0.12",
     "@vscode/test-electron": "^2.5.2",
     "eslint": "^9.39.1",
