@@ -27,3 +27,7 @@ This extension does not add any VS Code settings.
 ### 0.0.1
 
 Initial release with basic find-file functionality.
+
+## Build
+
+`vsce package`
