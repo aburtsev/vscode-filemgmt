@@ -1,6 +1,6 @@
 {
   "name": "emacs-find-file",
-  "version": "0.0.1",
+  "version": "0.2.0",
   "displayName": "Emacs Find File",
   "description": "Emacs-style find-file functionality for VS Code",
   "publisher": "alexandr-burtsev",
@@ -19,6 +19,10 @@
       {
         "command": "emacs-find-file.findFile",
         "title": "Emacs: Find File"
+      },
+      {
+        "command": "emacs-find-file.switchToOpenEditor",
+        "title": "Emacs: Switch to Open Editor"
       }
     ]
   },

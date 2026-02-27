@@ -345,19 +345,99 @@ class EmacsFindFile {
 
     this.quickPick.show();
   }
+
+  async showSwitchEditorQuickPick(): Promise<void> {
+    const itemToUri = new Map<vscode.QuickPickItem, vscode.Uri>();
+    const allTabs: { tab: vscode.Tab; uri: vscode.Uri }[] = [];
+
+    for (const group of vscode.window.tabGroups.all) {
+      for (const tab of group.tabs) {
+        if (tab.input instanceof vscode.TabInputText && tab.input.uri) {
+          allTabs.push({ tab, uri: tab.input.uri });
+        }
+      }
+    }
+
+    if (allTabs.length === 0) {
+      vscode.window.showInformationMessage("No open editors.");
+      return;
+    }
+
+    const activeTab = vscode.window.tabGroups.activeTabGroup.activeTab;
+    const order = allTabs.slice();
+    if (activeTab && activeTab.input instanceof vscode.TabInputText) {
+      const activeUri = activeTab.input.uri;
+      const idx = order.findIndex((e) => e.uri.toString() === activeUri.toString());
+      if (idx > 0) {
+        const [active] = order.splice(idx, 1);
+        order.unshift(active);
+      }
+    }
+
+    const allEditorItems: { item: vscode.QuickPickItem; uri: vscode.Uri }[] = order.map(
+      ({ uri }) => {
+        const label = path.basename(uri.fsPath) || uri.path || "Untitled";
+        const item: vscode.QuickPickItem = {
+          label: `$(file) ${label}`,
+          description: uri.fsPath,
+          alwaysShow: true,
+        };
+        itemToUri.set(item, uri);
+        return { item, uri };
+      }
+    );
+
+    const switchPick = vscode.window.createQuickPick();
+    switchPick.placeholder = "Switch to open editor…";
+    switchPick.title = "Emacs: Switch to Open Editor";
+    switchPick.items = allEditorItems.map((e) => e.item);
+
+    switchPick.onDidChangeValue((value) => {
+      if (value) {
+        const fuse = new Fuse(allEditorItems, {
+          keys: ["item.label", "item.description"],
+          threshold: 0.4,
+        });
+        switchPick.items = fuse.search(value).map((r) => r.item.item);
+      } else {
+        switchPick.items = allEditorItems.map((e) => e.item);
+      }
+    });
+
+    switchPick.onDidAccept(() => {
+      const selection = switchPick.selectedItems[0];
+      if (!selection) {
+        return;
+      }
+      const uri = itemToUri.get(selection);
+      if (uri) {
+        vscode.window.showTextDocument(uri);
+      }
+      switchPick.hide();
+    });
+
+    switchPick.onDidHide(() => switchPick.dispose());
+    switchPick.show();
+  }
 }
 
 export function activate(context: vscode.ExtensionContext) {
   const emacsFindFile = new EmacsFindFile(context);
 
-  const disposable = vscode.commands.registerCommand(
-    "emacs-find-file.findFile",
-    () => {
+  context.subscriptions.push(
+    vscode.commands.registerCommand("emacs-find-file.findFile", () => {
       emacsFindFile.showQuickPick();
-    }
+    })
   );
 
-  context.subscriptions.push(disposable);
+  context.subscriptions.push(
+    vscode.commands.registerCommand(
+      "emacs-find-file.switchToOpenEditor",
+      () => {
+        emacsFindFile.showSwitchEditorQuickPick();
+      }
+    )
+  );
 }
 
 export function deactivate() {}
